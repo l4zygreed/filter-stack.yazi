@@ -1,7 +1,7 @@
----@diagnostic disable: undefined-global
+---@diagnostic disable: undefined-global, unused-function, unused-local
 
 local fil = require('.filters')
-local filters = fil.FilterStack
+local filters = fil.FilterStack:new()
 
 local root = ya.sync(function() return cx.active.current.cwd end)
 -- local files = ya.sync(function() return cx.active.current.files end)
@@ -11,104 +11,198 @@ local list_files = ya.sync(function()
     local names = {}
     for _, file in ipairs(tab.files) do
         -- Extract just the string or URL (which is Sendable)
-        table.insert(names, tostring(file.url))
+    table.insert(names, {
+      name=file.url.name,
+      mime=file:mime()
+    })
     end
     return names
 end)
 
-local init = function()
-  local root = root()
-  local id = ya.id("ft")
-  local cwd = root:into_search("filter stack")
-end
+local get_filters = ya.sync(function(state)
+  local f = state.filters.stack
+  return f
+end)
 
--- local name = function()
---   ya.dbg("cleared")
---
---   local id = ya.id("ft")
---   local cwd = root()
---
---   local f = list_files()
---   -- ya.dbg(f)
---   -- for k,v in pairs(f) do
---   --   ya.dbg(v)
---   -- end
---
---   -- ya.dbg(tostring(cwd))
---   local url = cwd:join('kek.txt')
---   -- local url = cwd:into_search('kek')
---   local files = { File { url = url, cha = fs.cha(url, true) } }
---   ya.emit("update_files", { op = fs.op("part", { id = id, url = Url(cwd), files = {} }) })
---   ya.emit("update_files", {
---     op = fs.op("part", {
---       id = id,
---       url = Url(cwd),
---       files = files,
---     }),
---   })
---
---   ya.emit("update_files", {
---     op = fs.op("done", { id = id, url = cwd, cha = Cha { mode = tonumber("100644", 8) } }),
---   })
--- end
+local get_cwd = ya.sync(function(state)
+  ya.dbg(state.filters)
+  return Url(state.filters.cwd)
+end)
 
+local get_files = ya.sync(function(state)
+  return state.filters.files
+end)
 
-local function entry(self, job)
-  ya.dbg(fs)
-  -- local root = root()
-  -- local path = tostring(root.path)
+local get_id = ya.sync(function(state)
+  return state.filters.id
+end)
 
-  local action = job.args[1]
-
-  if action == 'name' then
-    -- name()
-    -- local value, event = ya.input {
-    --   title = "Filter by name",
-    --   pos = { "center", y = 0, w = 40 },
-    -- }
-    --
-    -- if event ~= 1 then
-    --   return
-    -- end
-
-    local value = "kek"
-    local f = fil.Name:new(value)
-    filters:append(f)
-
-    -- local r = list_files()
-    -- ya.dbg(r)
-    -- ya.dbg(filters.stack)
+local init = ya.sync(function(state)
+  if state.filters == nil then
+    ya.dbg("TOUCHING YOU")
+    -- state.filters = fil.FilterStack:new()
+    state.filters = {stack={}}
 
     local root = root()
     local id = ya.id("ft")
     local cwd = root:into_search("filter stack")
-    -- local cwd = root
+
+    local files = list_files()
+
+    state.filters.id = id
+    state.filters.cwd = tostring(cwd)
+    state.filters.files = files
 
     ya.emit("cd", { Url(cwd) })
+  end
+  ya.dbg("end")
+end)
+
+local render = function()
+  local id = get_id()
+  ya.dbg("bug next:cwd")
+  local cwd = get_cwd()
+  ya.dbg("bug next:files")
+  local files = get_files()
+  ya.dbg("bug next")
+  local stack = get_filters()
+  ya.dbg("got all")
+  if cwd or files then
+
+    local newfiles = {}
+
     ya.emit("update_files", { op = fs.op("part", { id = id, url = Url(cwd), files = {} }) })
 
-    local url = cwd:join('kek.txt')
-    local cha = fs.cha(url, true)
-    local files = { File { url = url, cha = cha } }
+    for _, file in ipairs(files) do
+      for _, filter in ipairs(stack) do
+        setmetatable(filter, fil[filter.class])
+        ya.dbg(file)
+        ya.dbg(filter(file))
+        if filter(file) ~= true then
+          goto continue
+        end
+      end
+
+      local url = cwd:join(file.name)
+      ya.dbg("before cha")
+      local cha = fs.cha(url, true)
+      ya.dbg("after cha")
+      if cha then
+        table.insert(
+          newfiles,
+          File { url = url, cha = cha }
+        )
+      end
+      ya.dbg("inserted cha")
+
+      ::continue::
+    end
+
+    ya.dbg("newfiles")
+    ya.dbg(newfiles)
     ya.emit("update_files", {
       op = fs.op("part", {
         id = id,
         url = Url(cwd),
-        files = files,
+        files = newfiles,
       }),
     })
-
-    -- for k,v in pairs(fil.FilterStack()) do
-    --   ya.dbg(k)
-    --   ya.dbg(v)
-    -- end
   end
-
-  -- local url = tostring(root:join('kek.txt'))
-  -- ya.dbg(url)
-
 end
 
+
+local input = function(title)
+  local value, event = ya.input {
+    title = title,
+    pos = { "center", y = 0, w = 40 },
+  }
+
+  if event ~= 1 then
+    return
+  end
+
+  return value
+end
+
+local name = ya.sync(function(state, value)
+  local f = fil.Name:new(value)
+  table.insert(state.filters.stack, f)
+end
+)
+
+local mime = ya.sync(function(state, value)
+  local f = fil.Mime:new(value)
+  table.insert(state.filters.stack, f)
+end
+)
+
+local dir = ya.sync(function(state)
+  local f = fil.Dir:new(true)
+  table.insert(state.filters.stack, f)
+end)
+
+local file = ya.sync(function(state)
+  local f = fil.Dir:new(false)
+  table.insert(state.filters.stack, f)
+end)
+
+local pop = ya.sync(function(state)
+  if state.filters then
+    ya.dbg(#state.filters.stack)
+    if #state.filters.stack >= 1 then
+      local obj = table.remove(state.filters.stack)
+      if #state.filters.stack < 1 then
+        state.filters = nil
+        ya.emit("escape", { search = true })
+        return 1
+      end
+    end
+  else
+    return 1
+  end
+end)
+
+local clear = ya.sync(function(state)
+  if state.filters then
+    state.filters = nil
+    ya.emit("escape", { search = true })
+  end
+end)
+
+local function entry(state, job)
+  local action = job.args[1]
+
+  if action == 'name' then
+    local inp = input("By name")
+    if not inp then return end
+    init()
+    name(inp)
+  elseif action == 'mime' then
+    local inp = input("By mime type")
+    if not inp then return end
+    init()
+    mime(inp)
+  elseif action == 'dir' then
+    init()
+    dir()
+  elseif action == 'file' then
+    init()
+    file()
+  elseif action == 'pop' then
+    local res = pop()
+    if res then goto escape end
+  elseif action == 'clear' then
+    clear()
+    goto escape
+  end
+  ya.dbg("newstack")
+
+  render()
+
+  ::escape::
+end
+
+-- @sync entry
 return {
   entry = entry
 }

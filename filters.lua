@@ -1,39 +1,104 @@
-local FilterStack = {stack={}}
+local FilterStack = {
+  stack={},
+}
 -- FilterStack.__index = FilterStack
 
--- function FilterStack:__call()
---   return self.stack
--- end
+function FilterStack:new()
+  local stack = {}
+  setmetatable(stack, FilterStack)
+  return stack
+end
 
 function FilterStack:append(obj)
   table.insert(self.stack, obj)
 end
 
-function FilterStack:pop(obj)
-  return table.remove(self.stack, obj)
+function FilterStack:pop()
+  table.remove(self.stack)
 end
 
 
 local Name = {}
-Name.__index = Name
 
 function Name:new(pattern)
-  local filter = Name
-  setmetatable(self, filter)
-  filter.pattern = pattern
+  local o = {}
+  o.pattern = pattern
+  o.class = "Name"
 
-  return filter
+  setmetatable(o, self)
+  self.__index = self
+  return o
 end
 
-function Name:call(fobj)
-  return fobj:name() == self.pattern
+function Name:__call(fobj)
+  if string.find(fobj.name, self.pattern) then
+    return true
+  end
+  return false
 end
 
 function Name:__tostring()
   return string.format("<Filter: name =~ /%s/>", self.pattern)
 end
 
+
+
+local Dir = {}
+
+function Dir:new(isdir)
+  local o = {}
+  o.isdir = isdir
+  o.class = "Dir"
+
+  setmetatable(o, self)
+  self.__index = self
+  return o
+end
+
+function Dir:__call(fobj)
+  if self.isdir then
+    return fobj.mime == "folder/local"
+  else
+    return fobj.mime ~= "folder/local"
+  end
+end
+
+function Dir:__tostring()
+  if self.isdir then
+    return "<Filter: is_dir>"
+  else
+    return "<Filter: is_file>"
+  end
+end
+
+local Mime = {}
+
+function Mime:new(pattern)
+  local o = {}
+  o.pattern = pattern
+  o.class = "Mime"
+
+  setmetatable(o, self)
+  self.__index = self
+  return o
+end
+
+function Mime:__call(fobj)
+  if fobj.mime ~= nil then
+    if string.find(fobj.mime, self.pattern) then
+      return true
+    end
+  end
+  return false
+end
+
+function Mime:__tostring()
+    return string.format("<Filter: mime =~ /%s/>", self.pattern)
+end
+
 return {
   FilterStack = FilterStack,
-  Name = Name
+  Name = Name,
+  Mime = Mime,
+  Dir = Dir,
 }
