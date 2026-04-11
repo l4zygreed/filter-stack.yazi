@@ -1,22 +1,19 @@
 ---@diagnostic disable: undefined-global, unused-function, unused-local
 
 local fil = require('.filters')
-local filters = fil.FilterStack:new()
 
 local root = ya.sync(function() return cx.active.current.cwd end)
--- local files = ya.sync(function() return cx.active.current.files end)
 
 local list_files = ya.sync(function()
-    local tab = cx.active.current
-    local names = {}
-    for _, file in ipairs(tab.files) do
-        -- Extract just the string or URL (which is Sendable)
+  local tab = cx.active.current
+  local names = {}
+  for _, file in ipairs(tab.files) do
     table.insert(names, {
-      name=file.url.name,
-      mime=file:mime()
+      name = file.url.name,
+      mime = file:mime()
     })
-    end
-    return names
+  end
+  return names
 end)
 
 local get_filters = ya.sync(function(state)
@@ -25,7 +22,6 @@ local get_filters = ya.sync(function(state)
 end)
 
 local get_cwd = ya.sync(function(state)
-  ya.dbg(state.filters)
   return Url(state.filters.cwd)
 end)
 
@@ -39,9 +35,7 @@ end)
 
 local init = ya.sync(function(state)
   if state.filters == nil then
-    ya.dbg("TOUCHING YOU")
-    -- state.filters = fil.FilterStack:new()
-    state.filters = {stack={}}
+    state.filters = { stack = {} }
 
     local root = root()
     local id = ya.id("ft")
@@ -60,15 +54,11 @@ end)
 
 local render = function()
   local id = get_id()
-  ya.dbg("bug next:cwd")
   local cwd = get_cwd()
-  ya.dbg("bug next:files")
   local files = get_files()
-  ya.dbg("bug next")
   local stack = get_filters()
   ya.dbg("got all")
   if cwd or files then
-
     local newfiles = {}
 
     ya.emit("update_files", { op = fs.op("part", { id = id, url = Url(cwd), files = {} }) })
@@ -84,16 +74,13 @@ local render = function()
       end
 
       local url = cwd:join(file.name)
-      ya.dbg("before cha")
       local cha = fs.cha(url, true)
-      ya.dbg("after cha")
       if cha then
         table.insert(
           newfiles,
           File { url = url, cha = cha }
         )
       end
-      ya.dbg("inserted cha")
 
       ::continue::
     end
@@ -125,24 +112,71 @@ local input = function(title)
 end
 
 local name = ya.sync(function(state, value)
-  local f = fil.Name:new(value)
+  local f = { class = "Name", pattern = value }
   table.insert(state.filters.stack, f)
 end
 )
 
 local mime = ya.sync(function(state, value)
-  local f = fil.Mime:new(value)
+  local f = { class = "Mime", pattern = value }
   table.insert(state.filters.stack, f)
 end
 )
 
 local dir = ya.sync(function(state)
-  local f = fil.Dir:new(true)
+  local f = { class = "Dir", isdir = true }
   table.insert(state.filters.stack, f)
 end)
 
 local file = ya.sync(function(state)
-  local f = fil.Dir:new(false)
+  local f = { class = "Dir", isdir = false }
+  table.insert(state.filters.stack, f)
+end)
+
+local notf = ya.sync(function(state)
+  if not state.filters or #state.filters.stack < 1 then
+    ya.notify({
+      title = "Error",
+      level = "error",
+      timeout = 4,
+      content = "No filter to reverse"
+    })
+    return -1
+  end
+  local f1 = table.remove(state.filters.stack)
+  local f = { class = "Not", f1 = f1 }
+  table.insert(state.filters.stack, f)
+end)
+
+local orf = ya.sync(function(state)
+  if not state.filters or #state.filters.stack < 2 then
+    ya.notify({
+      title = "Error",
+      level = "error",
+      timeout = 4,
+      content = "Not enough filters to Or"
+    })
+    return -1
+  end
+  local f2 = table.remove(state.filters.stack)
+  local f1 = table.remove(state.filters.stack)
+  local f = { class = "Or", f1 = f1, f2 = f2 }
+  table.insert(state.filters.stack, f)
+end)
+
+local andf = ya.sync(function(state)
+  if not state.filters or #state.filters.stack < 2 then
+    ya.notify({
+      title = "Error",
+      level = "error",
+      timeout = 4,
+      content = "Not enough filters to Or"
+    })
+    return -1
+  end
+  local f2 = table.remove(state.filters.stack)
+  local f1 = table.remove(state.filters.stack)
+  local f = { class = "And", f1 = f1, f2 = f2 }
   table.insert(state.filters.stack, f)
 end)
 
@@ -188,6 +222,15 @@ local function entry(state, job)
   elseif action == 'file' then
     init()
     file()
+  elseif action == 'not' then
+    local res = notf()
+    if res == -1 then goto escape end
+  elseif action == 'or' then
+    local res = orf()
+    if res == -1 then goto escape end
+  elseif action == 'and' then
+    local res = andf()
+    if res == -1 then goto escape end
   elseif action == 'pop' then
     local res = pop()
     if res then goto escape end

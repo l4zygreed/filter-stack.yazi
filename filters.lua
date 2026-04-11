@@ -1,34 +1,4 @@
-local FilterStack = {
-  stack={},
-}
--- FilterStack.__index = FilterStack
-
-function FilterStack:new()
-  local stack = {}
-  setmetatable(stack, FilterStack)
-  return stack
-end
-
-function FilterStack:append(obj)
-  table.insert(self.stack, obj)
-end
-
-function FilterStack:pop()
-  table.remove(self.stack)
-end
-
-
-local Name = {}
-
-function Name:new(pattern)
-  local o = {}
-  o.pattern = pattern
-  o.class = "Name"
-
-  setmetatable(o, self)
-  self.__index = self
-  return o
-end
+Name = {}
 
 function Name:__call(fobj)
   if string.find(fobj.name, self.pattern) then
@@ -41,19 +11,7 @@ function Name:__tostring()
   return string.format("<Filter: name =~ /%s/>", self.pattern)
 end
 
-
-
-local Dir = {}
-
-function Dir:new(isdir)
-  local o = {}
-  o.isdir = isdir
-  o.class = "Dir"
-
-  setmetatable(o, self)
-  self.__index = self
-  return o
-end
+Dir = {}
 
 function Dir:__call(fobj)
   if self.isdir then
@@ -71,17 +29,7 @@ function Dir:__tostring()
   end
 end
 
-local Mime = {}
-
-function Mime:new(pattern)
-  local o = {}
-  o.pattern = pattern
-  o.class = "Mime"
-
-  setmetatable(o, self)
-  self.__index = self
-  return o
-end
+Mime = {}
 
 function Mime:__call(fobj)
   if fobj.mime ~= nil then
@@ -93,12 +41,54 @@ function Mime:__call(fobj)
 end
 
 function Mime:__tostring()
-    return string.format("<Filter: mime =~ /%s/>", self.pattern)
+  return string.format("<Filter: mime =~ /%s/>", self.pattern)
+end
+
+Not = {}
+
+function Not:__call(fobj)
+  local f1 = setmetatable(self.f1, _G[self.f1.class])
+  return not f1(fobj)
+end
+
+function Not:__tostring()
+  local f1 = setmetatable(self.f1, _G[self.f1.class])
+  return string.format("<Filter: not %s>", tostring(f1))
+end
+
+Or = {}
+
+function Or:__call(fobj)
+  local f1 = setmetatable(self.f1, _G[self.f1.class])
+  local f2 = setmetatable(self.f2, _G[self.f2.class])
+  return f1(fobj) or f2(fobj)
+end
+
+function Or:__tostring()
+  local f1 = setmetatable(self.f1, _G[self.f1.class])
+  local f2 = setmetatable(self.f2, _G[self.f2.class])
+  return string.format("<Filter: %s or %s>", tostring(f1), tostring(f2))
+end
+
+And = {}
+
+function And:__call(fobj)
+  local f1 = setmetatable(self.f1, _G[self.f1.class])
+  local f2 = setmetatable(self.f2, _G[self.f2.class])
+  return f1(fobj) and f2(fobj)
+end
+
+function And:__tostring()
+  local f1 = setmetatable(self.f1, _G[self.f1.class])
+  local f2 = setmetatable(self.f2, _G[self.f2.class])
+  return string.format("<Filter: %s and %s>", tostring(f1), tostring(f2))
 end
 
 return {
-  FilterStack = FilterStack,
   Name = Name,
   Mime = Mime,
   Dir = Dir,
+  Not = Not,
+  Or = Or,
+  And = And,
 }
