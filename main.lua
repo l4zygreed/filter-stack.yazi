@@ -1,7 +1,6 @@
----@diagnostic disable: undefined-global, unused-function, unused-local
+---@diagnostic disable: undefined-global
 
 local fil = require('.filters')
-
 local root = ya.sync(function() return cx.active.current.cwd end)
 
 local list_files = ya.sync(function()
@@ -94,6 +93,7 @@ local render = function()
         files = newfiles,
       }),
     })
+    ya.emit("update_files", { op = fs.op("done", { id = id, url = cwd, cha = Cha { mode = tonumber("100644", 8) } }) })
   end
 end
 
@@ -184,7 +184,7 @@ local pop = ya.sync(function(state)
   if state.filters then
     ya.dbg(#state.filters.stack)
     if #state.filters.stack >= 1 then
-      local obj = table.remove(state.filters.stack)
+      table.remove(state.filters.stack)
       if #state.filters.stack < 1 then
         state.filters = nil
         ya.emit("escape", { search = true })
