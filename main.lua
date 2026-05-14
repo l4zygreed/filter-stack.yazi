@@ -15,6 +15,25 @@ local list_files = ya.sync(function()
   return names
 end)
 
+local get_state = ya.sync(function(state, key)
+	return state[key]
+end)
+
+local set_state = ya.sync(function(state, key, value)
+	state[key] = value
+end)
+
+local setup = function()
+  ps.sub("cd", function(_)
+    local cwd = tostring(root())
+    if not cwd:find("^search://filter stack") then
+      if get_state("filters") then
+        set_state("filters", nil)
+      end
+    end
+  end)
+end
+
 local get_filters = ya.sync(function(state)
   local f = state.filters.stack
   return f
@@ -34,21 +53,19 @@ end)
 
 local init = ya.sync(function(state)
   if state.filters == nil then
-    state.filters = { stack = {} }
-
     local root = root()
     local id = ya.id("ft")
     local cwd = root:into_search("filter stack")
-
     local files = list_files()
 
+    ya.emit("cd", { Url(cwd) })
+
+    state.filters = { stack = {} }
     state.filters.id = id
     state.filters.cwd = tostring(cwd)
     state.filters.files = files
-
-    ya.emit("cd", { Url(cwd) })
   end
-  ya.dbg("end")
+  -- ya.dbg("end")
 end)
 
 local render = function()
@@ -56,7 +73,7 @@ local render = function()
   local cwd = get_cwd()
   local files = get_files()
   local stack = get_filters()
-  ya.dbg("got all")
+  -- ya.dbg("got all")
   if cwd or files then
     local newfiles = {}
 
@@ -65,8 +82,8 @@ local render = function()
     for _, file in ipairs(files) do
       for _, filter in ipairs(stack) do
         setmetatable(filter, fil[filter.class])
-        ya.dbg(file)
-        ya.dbg(filter(file))
+        -- ya.dbg(file)
+        -- ya.dbg(filter(file))
         if filter(file) ~= true then
           goto continue
         end
@@ -84,8 +101,8 @@ local render = function()
       ::continue::
     end
 
-    ya.dbg("newfiles")
-    ya.dbg(newfiles)
+    -- ya.dbg("newfiles")
+    -- ya.dbg(newfiles)
     ya.emit("update_files", {
       op = fs.op("part", {
         id = id,
@@ -182,7 +199,7 @@ end)
 
 local pop = ya.sync(function(state)
   if state.filters then
-    ya.dbg(#state.filters.stack)
+    -- ya.dbg(#state.filters.stack)
     if #state.filters.stack >= 1 then
       table.remove(state.filters.stack)
       if #state.filters.stack < 1 then
@@ -238,7 +255,7 @@ local function entry(state, job)
     clear()
     goto escape
   end
-  ya.dbg("newstack")
+  -- ya.dbg("newstack")
 
   render()
 
@@ -247,5 +264,6 @@ end
 
 -- @sync entry
 return {
-  entry = entry
+  entry = entry,
+  setup = setup
 }
